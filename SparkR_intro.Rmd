@@ -1,0 +1,296 @@
+---
+title: "SparkR入门"
+author: "Lixiang @BusinessMatrix"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_notebook:
+    theme: cosmo
+    highlight: kate
+---
+
+[SparkR](https://spark.apache.org/docs/latest/sparkr.html)为R提供了轻量级的Spark前端。Spark v2.2.0中，SparkR实现了与R数据框（data frame）类似的支持分布式操作和计算的数据框（Spark DataFrame），能够支持大型数据集。DataFrame在Spark v1.3引入。关于RDD、DataFrame、Dataset等Spark三种数据结构API，详细参阅：[Difference between DataFrame and RDD in Spark](https://stackoverflow.com/questions/31508083/difference-between-dataframe-and-rdd-in-spark)。
+
+使用SparkR前，确保spark安装和配置完成，可以通过SparkR包中的`spark.install()`安装特定版本的spark。
+
+# 配置环境和加载R包
+
+```{r}
+# 配置SPARK_HOME环境变量
+spark_home = "/usr/local/Cellar/apache-spark/2.2.0/libexec"
+Sys.setenv(SPARK_HOME = spark_home)
+```
+
+**三种安装和加载SparkR包的方式**
+
+1: 从spark安装目录直接加载SparkR包：这种方式仅仅临时加载，下一次需要再次加载。
+
+```{r}
+suppressPackageStartupMessages(
+  library(SparkR, lib.loc = c(file.path(Sys.getenv("SPARK_HOME"), "R", "lib")))
+  )
+```
+
+2: 先将spark安装目录的R lib路径加入R的搜索路径再加载SparkR包：如果将添加搜索路径的语句添加至`.Rprofile`或者`Rprofile.site`文件中，便不需要再每次启动R后再一次添加搜索路径。故可以长期地搜索到SparkR包。
+
+```{r}
+.libPaths(file.path(Sys.getenv("SPARK_HOME"), "R", "lib"))
+library(SparkR)
+```
+
+3: 从spark的github仓库安装与Spark版本对应的SparkR包：这种方式与第二种类似，只不过是下载安装SparkR至R Library库的路径中。
+
+```{r}
+install.packages('devtools')
+devtools::install_github('apache/spark@v2.2.0', subdir='R/pkg')
+library(SparkR)
+```
+
+# 初始化：连接R与Spark
+
+SparkContext(version < 2.0.0)/SparkSession(version >= 2.0.0)是SparkR的切入点，它使得你的R程序和Spark集群互通。
+
+## Spark v2.0.0
+
+v2.0版本之前，你可以通过`sparkR.init()`来构建SparkContext，然后可以传入类似于应用程序名称的选项给它。
+
+```{r}
+# spark version < 2.0
+sc <- sparkR.init()
+sqlContext <- sparkRSQL.init(sc)
+```
+
+如果想使用DataFrames，需要创建SQLContext，这个可以通过SparkContext来构造。v2.0之后不再需要显式创建SQLContext。如果你使用SparkR shell，SQLContext和SparkContext会自动地构建好。
+
+## Spark v2.2.0
+
+v2.2.0版本的SparkR通过`sparkR.session()`初始化spark环境，创建SparkSession。`sparkR.session()`会自动检测系统中是否存在spark，如果发现不存在，会自行安装spark。此外，也可以手动执行`install.spark()`来安装spark进行开发。
+
+```{r}
+# 通过SparkR::spark_install()手动安装spark
+spark_install(version = "2.2.0",hadoop_version = "2.7")
+```
+
+有多种方式将R程序接入Spark：
+
+* RStudio
+* R shell
+* Rscript
+* 其他R IDEs
+
+在这里通过RStudio中的R Notebook与Spark交互。
+
+```{r}
+# spark version >= 2.0
+sparkR.session()
+```
+
+# 配置SparkSession
+
+在生产环境中，初始化SparkSession时，需要配置一些必要的参数，例如：
+
+* spark.master
+* spark.driver.memory
+
+```{r warning=FALSE, message=FALSE}
+sparkR.session(master = "local[2]", 
+               sparkConfig = list(spark.driver.memory = "1g"))
+## 使用 YARN
+# sparkR.session(master = "yarn", 
+#                sparkConfig = list(spark.driver.memory = "1g"))
+```
+
+## 补充：使用config包创建和读取配置文件
+
+config包的使用参考[项目主页](https://github.com/rstudio/config)
+
+```{r}
+# install.packages("config")
+sparkConfig <- config::get()
+```
+
+# 创建SparkDataFrames
+
+Spark DataFrame提供了分布式计算功能。所以需要读取数据为Spark DataFrame，然后对其进行操作和分析处理。Spark DataFrame可以由多个源创建：
+
+* 结构化数据
+* Hive表
+* 外部数据库
+* 已有的R数据框
+
+## 从R DataFrame创建Spark DataFrame
+
+最简便的创建Spark DataFrame的方式是从本地已有的R DataFrame转换。在这里通过`tidyquant`包获取股票数据，然后存入Spark。`tidyquant`是一个非常强大的整合了多个主流量化金融R包并且与tidyverse系列包整合，详细教程参考[tidyquant的小品文（Vignettes）](https://cran.r-project.org/web/packages/tidyquant/vignettes/TQ00-introduction-to-tidyquant.html)和[项目主页](https://github.com/business-science/tidyquant)。
+
+```{r warning=FALSE, message=FALSE}
+
+# 从Yahoo获取苹果股票价格
+# 有时候奇怪的网络问题会导致网络连接请求超时，刷新一下网络就好使了
+apple <- tidyquant::tq_get("AAPL",
+                           get = "stock.prices", 
+                           from = "2015-01-01",
+                           to = "2017-01-01")
+msft <- tidyquant::tq_get("MSFT",
+                          get = "stock.prices",
+                          from = "2015-01-01",
+                          to = "2017-01-01")
+head(apple)
+class(apple)
+```
+
+将RDataFrame转换为SparkDataFrame：
+
+```{r}
+apple_sdf <- as.DataFrame(apple)
+```
+
+
+## 从外部数据库（MySQL）创建SparkDataFrame
+
+如果要与数据库互通，需要安装配置对应数据库的JDBC驱动。MySQL需安装`mysql-connector-java`，下载地址：https://dev.mysql.com/doc/index-connectors.html 。下载后配置环境变量：
+
+```{bash}
+echo "export CLASSPATH=/path/to/mysql-connector-java-ver-bin.jar:$CLASSPATH" >> ~/.bashrc
+source ~/.bashrc
+```
+
+但是，配置环境变量问题无法解决问题。
+
+最后发现需要通过命令行flags和默认属性文件进行配置。不能在client-mode下通过sparkConfig对象配置数据库驱动新增类库路径（spark.driver.extraClassPath）。因为此时JVM已经运行，配置应该在JVM运行之前就设定好。需要通过命令行或者在默认属性文件（`$SPARK_HOME/conf/spark-defaults.conf`）中配置。参考：[Spark unable to find jdbc driver](https://stackoverflow.com/questions/29552799/spark-unable-to-find-jdbc-driver)。
+
+```
+spark.driver.extraClassPath = /path/to/mysql-conntector-java-ver-bin.java
+```
+
+首先我们将msft数据写入MySQL，然后再读取至Spark中。`DBI`是提供了十分方便的操作数据库的函数。详细介绍可以参考RStudio关于R数据库操作的[文档](http://db.rstudio.com)。
+
+```{r}
+library(DBI)
+con <- dbConnect(RMySQL::MySQL(), 
+                 dbname = "demo",
+                 user = "root",
+                 password = "900311")
+# 列出数据库中已有的表
+dbListTables(con)
+# 将msft写入数据库中
+dbWriteTable(con, "msft", msft)
+# 再次列出数据库中已有的表
+dbListTables(con)
+# 列出数据库中表的列名/域名
+dbListFields(con, "msft")
+# 对表进行查询
+res <- dbSendQuery(con, 
+                   "SELECT row_names,date,adjusted 
+                   FROM msft 
+                   WHERE date LIKE '2016%'")
+msft_2016 <- dbFetch(res)
+head(msft_2016, 3)
+dbClearResult(res)
+```
+
+从MySQL中读取数据至spark：
+
+```{r}
+jdbcUrl <- "jdbc:mysql://localhost:3306/demo"
+driver <- "com.mysql.jdbc.Driver"
+msft_sdf <- read.jdbc(url = jdbcUrl, 
+                       tableName = "msft",
+                       user = "root", 
+                       password = "900311",
+                       driver = driver)
+head(msft_sdf)
+```
+
+## 从文件路径读取csv或json
+
+```{r}
+df_csv <- read.df("path/to/file.csv", source = "csv")
+df_json <- read.df("path/to/file.json", source = "json")
+```
+
+## 使用SQL语句创建SparkDataFrame
+
+```{r}
+sql("CREATE TABLE src (key INT, value STRING)")
+sql("LOAD DATA LOCAL INPATH '/Users/lix/Desktop/work0814-0818/demo.txt' OVERWRITE INTO TABLE src")
+results <- sql("FROM src SELECT key, value")
+head(results)
+```
+
+# 操作Spark DataFrame
+
+Spark DataFrame支持多种对数据集的操作，详细参考[SparkR API](https://spark.apache.org/docs/latest/api/R/index.html)。
+
+```{r}
+# 选择列
+head(SparkR::select(apple_sdf, "date", "open"))
+# 过滤
+head(SparkR::filter(apple_sdf, 
+                    apple_sdf$date >= as.Date("2016-06-01")))
+# 排序
+head(SparkR::arrange(apple_sdf, 
+                     SparkR::asc(apple_sdf$date), 
+                     SparkR::desc(apple_sdf$adjusted)))
+# 增加列
+head(mutate(apple_sdf, sqrt = sdf$monthly_return^2))
+# 组合与聚合
+sdf_new <- mutate(sdf, Year = year(sdf$Date))
+head(summarize(groupBy(sdf_new, sdf_new$Year), count = n(sdf_new$Year)))
+```
+
+# 传入函数进行分布式计算
+
+|      | 不分组 | 分组 |
+|------|--------|------|
+不缓存 | `dapply()` | `gapply()`
+缓存   | `dapplyCollect()` | `gapplyCollect()`
+
+```{r}
+schema <- structType(structField("r", "double"),
+                     structField("rsqrt", "double"))
+df_temp <- dapply(sdf, 
+                  function(x) { cbind(x$monthly_return, x$monthly_return^2) },
+                  schema)
+head(collect(df_temp))
+```
+
+```{r}
+ldf <- dapplyCollect(
+         sdf,
+         function(x) {
+           cbind(r = x$monthly_return, 
+                 `r+1` = x$monthly_return + 1)
+         })
+head(ldf, 3)
+```
+
+# 传入本地函数进行分布式计算
+
+`spark.lapply()`类似于`lapply()`，对列表中的所有元素执行某个函数，并且将计算分发至spark进行计算。最后计算所得的结果大小应该不超过单机硬盘容量，否则将计算失败。如果单机无法容纳，那么可以考虑使用创建`dapply()`函数。
+
+```{r}
+# Perform distributed training of multiple models with spark.lapply. Here, we pass
+# a read-only list of arguments which specifies family the generalized linear model should be.
+families <- c("gaussian", "poisson")
+train <- function(family) {
+  model <- glm(Sepal.Length ~ Sepal.Width + Species, iris, family = family)
+  summary(model)
+}
+# Return a list of model's summaries
+model.summaries <- spark.lapply(families, train)
+
+# Print the summary of each model
+print(model.summaries)
+```
+
+# 缓存数据
+
+有时候有必要把数据缓存下来用于后续分析，SparkR支持一下几种函数实现这一功能：
+
+* `cache()`将SparkDataFrame数据缓存至内存;
+* `collect()`采集指定SparkDataFrame的所有数据至R DataFrame中;
+* `persist()`以特定模式缓存SparkDataFrame数据;
+
+# 终止会话
+
+`sparkR.session.stop()`
+

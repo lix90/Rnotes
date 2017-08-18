@@ -1,0 +1,213 @@
+---
+title: "sparklyr入门"
+author: "Lixiang @BusinessMatrix"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_notebook:
+    theme: cosmo
+    highlight: kate
+---
+
+sparklyr是RStudio开发的将R与Spark互通的包。sparklyr与SparkR在核心功能上一致，但也存在不少差异。以下两个讨论能够了解到两者的一些差异：
+
+* [StackOverflow: SparkR vs sparklyr](https://stackoverflow.com/questions/39494484/sparkr-vs-sparklyr)
+* [RStudio/sparklyr: sparklyr and SparkR - the future?](https://github.com/rstudio/sparklyr/issues/502)
+
+具体来说，有以下差异：
+
+* SparkR对R代码的并行计算的执行上比sparklyr占优，但sparklyr的开发者在逐步完善中（sparklyr v0.6.0，已经支持分布式计算）；
+* SparkR依赖于对应版本的Spark，在兼容上存在一定的限制；而sparklyr希望其运行不依赖特定Spark版本；
+* SparkR与R生态中的其他包的兼容性低；sparklyr致力于与其他包兼容，例如：dplyr、MLlib、h2o等；
+* sparklyr更强调可扩展性，为用户提供了更多的自由度；
+* sparklyr发布在CRAN，更易安装；
+* sparklyr与RStudio整合，交互式分析更友好；
+* 另外还有一些小差异，如SparkR中的`as.Dataframe()`会保留Date格式数据，而sparklyr中的对应函数`copy_to()`不保留Date格式。
+
+总得来说，个人更喜欢sparklyr，提供了dplyr的后端，配合Spark SQL进行查询，能和更多的包配合使用。但是，最好能灵活运用两个包。
+
+关于sparklyr的详细教程参考[RStudio sparklyr教程页面](https://spark.rstudio.com/index.html)。RStudio还提供了[sparklyr速查表](https://github.com/rstudio/cheatsheets/raw/master/source/pdfs/sparklyr.pdf)下载。
+
+# 安装sparklyr
+
+```{r}
+install.packages("sparklyr")  # from CRAN, 稳定版
+# devtools::install_github("rstudio/sparklyr")  # from github, 尝鲜版
+```
+
+# 与Spark建立连接
+
+sparklyr支持两种部署模式：
+
+* local：在本地桌面端运行，适用于较小的数据集，用于测试开发过程；
+* cluster：直接在集群内或伴随着集群运行，包括三种类型集群：standalone、YARN、Mesos；
+
+## 本地模式
+
+本地模式提供了方便进行分析、报告和开发的环境，可以不需要什么修改就直接部署到生产环境的集群模式中。
+
+```{r}
+library(sparklyr)
+library(dplyr)
+spark_home = "/usr/local/Cellar/apache-spark/2.2.0/libexec"
+sc <- spark_connect(master = "local",
+                    spark_home = spark_home)
+```
+
+## 集群模式
+
+一个常见的部署方式是从一个与工作节点共处同一局域网的网关机（gateway machine）或者edge节点提交应用程序。这种情况比较适合于客户端模式，驱动节点由spark-submit进程直接启动，并作为集群的一个客户端。应用程序的输入和输出与控制台结合。这种模式特别适合于包含有REPL功能的应用程序。
+
+在集群模式下，确保每个节点安装了相同版本的Spark和R。并且在`Renviron.site`中配置了`SPARK_HOME`的环境变量。
+
+Standalone模式下：
+
+```{r}
+library(sparklyr)
+sc <- spark_connect(master = "spark://local:7077")
+```
+
+Yarn集群下：
+
+```{r}
+library(sparklyr)
+sc <- spark_connect(master = "yarn-client")
+```
+
+## 配置与调试
+
+通过调试配置来控制和调整sparklyr和spark集群行为。可以通过`config.yml`文件创建多种模式的配置参数，例如：开发、测试、生产环境。
+
+配置通过`spark_connect()`函数中的`config`参数传入，或者直接通过`spark_config()`函数生成并闯入`spark_connect()`函数中。
+
+通过R脚本配置：
+
+```{r}
+config <- spark_config()
+config$spark.executor.cores <- 2
+config$spark.executor.memory <- "4G"
+sc <- spark_connect(master = "yarn-client", config = config, version = '2.2.0')
+```
+
+通过YAML脚本配置：
+
+```{yaml}
+default:
+  spark.executor.cores: 2
+  spark.executor.memory: 4G
+```
+
+# 导入数据至Spark集群
+
+## 直接从R dataframe转换
+
+```{r}
+sdf_copy_to(sc, iris, "spark_iris", overwrite = TRUE)
+copy_to(sc, mtcars, "spark_mtcars", overwrite = TRUE)
+src_tbls(sc)
+```
+
+## 从文件系统读取
+
+```{r}
+# csv
+df_csv <- spark_read_csv(
+  sc,
+  "df_csv",
+  "demo.txt",
+  delimiter = " ",
+  header = FALSE,
+  columns = c("key", "value")
+)
+head(df_csv)
+
+# json
+df_json <- spark_read_json(
+  sc,
+  "df_json",
+  "demo.json"
+)
+head(df_csv)
+```
+
+## 从数据库读取
+
+```{r}
+config <- spark_config()
+# 使用数据库需要配置java类库
+config$`sparklyr.shell.driver-class-path` <- 
+  "~/.java/mysql-connector-java/mysql-connector-java-5.1.43-bin.jar"
+sc <- spark_connect(master = "local",
+                    config = config,
+                    spark_home = spark_home)
+df_jdbc <- spark_read_jdbc(
+  sc,
+  name = "mtcars_jdbc",
+  options = list(
+    url = "jdbc:mysql://localhost:3306/demo",
+    user = "root",
+    password = "900311",
+    dbtable = "mtcars"
+  )
+)
+```
+
+## 从Hive读取
+
+略。
+
+# 操作SparkDataFrame数据（Wrangling）
+
+## 通过dplyr动词函数
+
+dplyr接口提供的动词函数利用的是Spark SQL，将R代码转换成SQL语句至数据库中进行操作。而下面将提到的`sdf_*`系列函数则是直接使用的Scala Spark DataFrame API。
+
+```{r}
+df_jdbc %>%
+  select(row_names, mpg, cyl, wt) %>%
+  filter(mpg >= 20 & mpg <= 22) %>%
+  arrange(wt, desc(cyl))
+```
+
+## 通过DBI使用Spark SQL查询
+
+```{r}
+DBI::dbGetQuery(sc, "SELECT row_names, cyl FROM mtcars_jdbc LIMIT 10")
+```
+
+
+## 通过SDF系列函数使用Scala API
+
+略。
+
+# 从Spark集群下载数据
+
+## 至内存
+
+```{r}
+dplyr::collect()
+sdf_read_column()
+```
+
+## 至文件
+
+```{r}
+spark_write_csv()
+spark_write_json()
+# spark_write_*
+```
+
+# 传入函数进行分布式计算
+
+```{r}
+spark_apply()
+```
+
+# 结束spark会话
+
+```{r}
+spark_disconnect(sc)
+```
+
+
+
+

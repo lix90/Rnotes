@@ -1,0 +1,42 @@
+---
+title: "Sparklyr分析金融数据"
+output: 
+  html_notebook:
+    theme: cosmo
+    highlight: kate
+---
+
+# 创建spark连接
+
+```{r}
+spark_home = "/usr/local/Cellar/apache-spark/2.2.0/libexec"
+library(sparklyr)
+library(dplyr)
+library(quantmod)
+library(tidyquant)
+
+sc <- spark_connect(master = "local",
+                    spark_home = spark_home)
+```
+# 抓取股票数据
+
+设置抓取
+```{r}
+getSymbols("MSFT")
+```
+
+```{r}
+tail(MSFT, 3)
+```
+
+# 将数据传送至spark集群
+
+```{r}
+MSFT.df <- data.frame(index(MSFT), coredata(MSFT))
+colnames(MSFT.df) <- c("Date", colnames(MSFT))
+msft_sdf <- sdf_copy_to(sc, MSFT.df, "msft_sdf", overwrite = TRUE)
+head(msft_sdf)
+```
+
+# 对数据进行操作
+

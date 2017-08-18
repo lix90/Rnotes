@@ -1,0 +1,18 @@
+---
+title: "tidyquant入门"
+output: 
+  html_notebook:
+    theme: cosmo
+    highlight: kate
+---
+
+# tidyquant简介
+
+tidyquant包整合了现有的采集和分析金融数据的资源，实现了`xts`与`zoo`，`quantmod`，`TTR`，以及`PerformanceAnalytics`包与`tidyverse`数据基础架构包无缝对接。目前R社区有四大类量化包：
+ 
+* xts：用于操作时间序列的数据结构，整合了底层的`zoo`包；
+* quantmod：获取、操作、以及对金融数据建模；
+* TTR：对量化和交易数据进行技术交易方程的计算；
+* PerformanceAnalytics：包含了一系列计量经济学函数，包括业绩和风险分析。
+
+# tidyquant结构
