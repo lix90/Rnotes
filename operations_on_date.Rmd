@@ -1,0 +1,121 @@
+---
+title: "Operations on Date in R"
+author: "Lixiang"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_notebook:
+    theme: cosmo
+    highlight: kate
+---
+
+# 涉及到的R包
+
+```{r}
+library(lubridate)
+```
+
+# 日期和时间信息
+
+从[Time and Date](https://www.timeanddate.com/)获取关于日期和时间的信息。
+
+# 日期数据类型
+
+`Date`
+`POSIXlt` & `POSIXct`
+
+```{r}
+# 获取今天的日期时间
+(today <- Sys.time())
+# 查看日期类型和属性
+class(today)
+# 转换为Date类型
+as.Date(today)
+class(as.Date(today))
+# 将日期转换为GMT模式
+as.POSIXlt(today, "GMT")
+# 获取系统时区
+Sys.timezone()
+# 转换为巴黎时间
+as.POSIXlt(today, tz = "Europe/Paris") 
+```
+```{r}
+# 创建Date日期数据
+(birthday <- as.Date("1990-03-11"))
+(our_birthday <- as.Date(c("1990-03-11", "1993-05-26")))
+class(birthday)
+# 转换为POSIXct和POSIXlt类型
+as.POSIXct(birthday)
+as.POSIXlt(birthday)
+```
+
+# 提取POSIXt或者Date对象的部分数据
+
+```{r}
+# 查看1970以后的leap seconds（跳秒）时间
+.leap.seconds
+# 查看跳秒时间的星期
+weekdays(.leap.seconds)
+# 查看跳秒时间的月份
+months(.leap.seconds)
+# 查看跳秒时间的季度
+quarters(.leap.seconds)
+```
+
+
+# 格式化日期
+
+`format(object, "<formatting string>")`
+`%Y-%m-%d %H:%M:%S`
+
+通过`strptime()`函数文档查看日期格式代码，例如：
+
+* 年份：`%y` `%Y`
+* 星期：`%a` 星期简写；`%A` 星期全称；`%w` `%W` `%u` `%U` `%V`
+* 月份：`%b` 月份简写；`%B` 月份全称。
+* 日：`%d` 01-31；`$e` 1-31 单个数字前有一个空格。
+* 世纪：`%C`
+
+默认格式：
+
+* `%D` `%m/%d/%y`
+* `%c` `%a %b %e %H:%M:%S %Y`
+* `%F` `%Y-%m-%d` ISO 8601日期格式
+
+| format | 含义 | 例子 |
+|--------|------|------|
+`%a` | 星期名简称 | Sun, Thu
+`%A` | 星期名全称 |	Sunday, Thursday
+`%b`/`%h` | 月份名简称 |	May, Jul
+`%B` | 月份名全称 |	May, July
+`%d` | 月份中的日 | 01-31	27, 07
+`%j` | 年份中的日 | 001-366	148, 188
+`%m` | 月份 | 01-12	05, 07
+`%U` | 一年中的星期 | 01-53（以周日为一周第一天）22, 27
+`%w` | 星期 | 0-6 周日为0	0, 4
+`%W` | 一年中的星期 | 00-53（以周一为一周第一天）21, 27
+`%x` | 特定区域日期 |
+`%y` | 不包含世纪数的年份 | 00-99	84, 05
+`%Y` | 包含世纪数的年份 | 00-68以20为前缀；69-99以19为前缀 1984, 2005
+`%C` | 世纪数 |	19, 20
+`%D` | `%m/%d/%y`格式日期 |	05/27/84, 07/07/05
+`%u` | 星期 | 1-7 星期一为1	7, 4
+|||
+`%n`| 输出为换行符；输入为空白符 |
+`%t`|	输出为制表符；输入为空白符 |
+
+```{r}
+# 年份
+format(.leap.seconds, "%y")
+format(.leap.seconds, "%Y")
+# 月份
+format(.leap.seconds, "%B")
+format(.leap.seconds, "%b")
+format(.leap.seconds, "%m")
+# 星期
+format(.leap.seconds, "%w")
+format(.leap.seconds, "%a")
+format(.leap.seconds, "%A")
+```
+
+
+# 日期运算
